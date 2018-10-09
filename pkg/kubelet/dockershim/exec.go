@@ -21,6 +21,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	dockertypes "github.com/docker/engine-api/types"
@@ -70,13 +71,25 @@ func (*NsenterExecHandler) ExecInContainer(client libdocker.Interface, container
 	}
 
 	containerPid := container.State.Pid
+	//get user of exec
+	containerUser := container.Config.User
 
 	// TODO what if the container doesn't have `env`???
 	args := []string{"-t", fmt.Sprintf("%d", containerPid), "-m", "-i", "-u", "-n", "-p", "--", "env", "-i"}
 	args = append(args, fmt.Sprintf("HOSTNAME=%s", container.Config.Hostname))
 	args = append(args, container.Config.Env...)
-	args = append(args, cmd...)
-	command := exec.Command(nsenter, args...)
+	//args = append(args, cmd...)
+	//command := exec.Command(nsenter, args...)
+
+	// need su if user is not root
+	if containerUser != "0" {
+		args = append(args, []string{"su", fmt.Sprintf("%s", containerUser), "-c"}...)
+		args = append(args, fmt.Sprintf("%s", strings.Join(cmd, " ")))
+	} else {
+		args = append(args, cmd...)
+	}
+	glog.Infof(strings.Join(args, " "))
+
 	var cmdErr error
 	if tty {
 		p, err := kubecontainer.StartPty(command)
